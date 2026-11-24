@@ -6,8 +6,8 @@ issueTrackerURL = "https://github.com/ded811/Meshelium/issues"
 [[mods]]
 modId = "meshelium"
 version = "${version}"
-displayName = "Meshelium"
-authors = "Ded811"
+displayName = "Meshelium (Quasar MC)"
+authors = "Ded811 (Quasar MC changes: KrisKreemurr)"
 displayURL = "https://modrinth.com/mod/meshelium"
 # Both, because they are different slots: bannerFile is the wide strip
 # and iconFile is the square badge in the mod list. Only the banner was

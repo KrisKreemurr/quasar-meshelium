@@ -1,0 +1,36 @@
+# Quasar Meshelium: builds the 26.3 NeoForge jar on every push.
+name: build
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+      - name: Build 26.3 (NeoForge)
+        run: |
+          chmod +x gradlew
+          for i in 1 2 3; do
+            ./gradlew :neoforge:build -Pmc=26.3 --stacktrace && break
+            echo "build attempt $i failed, retrying"; sleep 20
+          done
+          mkdir -p out
+          cp neoforge/build/libs/*.jar out/ 2>/dev/null || true
+          rm -f out/*-sources.jar out/*-dev.jar out/*-slim.jar
+          ls -la out
+          test -n "$(ls out/*.jar 2>/dev/null)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quasar-meshelium-26.3
+          path: out/*.jar
