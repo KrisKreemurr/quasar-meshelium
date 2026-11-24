@@ -17,6 +17,12 @@ public final class QuasarPortalHook {
     /** Set by the portal mod. Runs on the render thread after the main opaque terrain. */
     public static volatile Runnable afterOpaque;
     
+    /**
+     * Render distance for portal views, in sections (chunks) around the virtual camera, horizontal (like vanilla's
+     * render distance). Set by the portal mod; beyond it the far view comes from the panorama (sky colour until then).
+     */
+    public static volatile int portalRenderDistance = Integer.MAX_VALUE;
+    
     private static boolean failed;
     
     private QuasarPortalHook() {}

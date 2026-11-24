@@ -3247,6 +3247,10 @@ public final class TerrainDrawer {
             int sx = d[o];
             int sy = d[o + 1];
             int sz = d[o + 2];
+            if (quasarPortalPass && (Math.abs(sx - camSx) > quasarPortalRadius
+                    || Math.abs(sz - camSz) > quasarPortalRadius)) {
+                continue; // Quasar MC: beyond the portal render distance
+            }
             double bx = sx << 4;
             double by = sy << 4;
             double bz = sz << 4;
@@ -3376,6 +3380,8 @@ public final class TerrainDrawer {
     private static int quasarRegionCount;
     private static int[] quasarOrder = new int[0];
     private static int quasarOrderCount;
+    private static int quasarPortalRadius = Integer.MAX_VALUE / 2;
+    private static int quasarCamSx, quasarCamSz;
 
     private static void quasarBuildRegionIndex(TerrainResidency.DrawSnapshot snap) {
         int[] d = snap.data();
@@ -3434,6 +3440,12 @@ public final class TerrainDrawer {
         int[] out = quasarOrder;
         for (int r = 0; r <= quasarRegionCount; r++) {
             if (r < quasarRegionCount) {
+                // region spans sections rx*8..rx*8+7 / rz*8..rz*8+7: skip when wholly beyond the portal distance
+                int rsx = quasarRegionBox[r * 3] * 8, rsz = quasarRegionBox[r * 3 + 2] * 8;
+                if (rsx > quasarCamSx + quasarPortalRadius || rsx + 7 < quasarCamSx - quasarPortalRadius
+                        || rsz > quasarCamSz + quasarPortalRadius || rsz + 7 < quasarCamSz - quasarPortalRadius) {
+                    continue;
+                }
                 double x = quasarRegionBox[r * 3] * 128.0;
                 double y = quasarRegionBox[r * 3 + 1] * 64.0;
                 double z = quasarRegionBox[r * 3 + 2] * 128.0;
@@ -3476,6 +3488,10 @@ public final class TerrainDrawer {
             return false;
         }
         quasarPortalSections = 0;
+        int radius = com.deds.meshelium.quasar.QuasarPortalHook.portalRenderDistance;
+        quasarPortalRadius = radius <= 0 ? Integer.MAX_VALUE / 2 : radius;
+        quasarCamSx = cam.blockPos.getX() >> 4;
+        quasarCamSz = cam.blockPos.getZ() >> 4;
         quasarPortalPass = true;
         quasarPortalWidth = width;
         quasarPortalHeight = height;
