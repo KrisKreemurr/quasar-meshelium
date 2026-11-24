@@ -12,5 +12,10 @@ The mod id stays `meshelium` so existing settings carry over; the display name i
 - 2026-11-23: forked from upstream `main` (Meshelium 1.6.2). Added a GitHub Actions build for the
   26.3 NeoForge jar, changed the display name/authors line, jar named QuasarMeshelium-neoforge-*.jar. No code changes yet.
 
-Planned: per-pixel dynamic lights and coloured block light in the terrain shader, fed by Quasar MC's
-Quasium mod.
+- 2026-11-23: smooth moving lights. New `com.deds.meshelium.quasar.QuasarLights` (filled each frame by
+  Quasar MC's Quasium mod, reflectively); `TerrainDrawer.uploadScene` appends the light list to the scene
+  UBO (208 -> 784 bytes, non-Sodium variants); `terrain.mesh` (`quasarDynamicLight`) slides a corner's
+  baked block light from the baked block position to the exact light position when the baked value
+  matches that light's open-space falloff. CI compiles the touched shader variants with glslc/spirv-val.
+
+Planned: coloured block light in the terrain shader.
