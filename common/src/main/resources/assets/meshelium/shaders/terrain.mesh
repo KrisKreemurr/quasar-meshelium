@@ -771,7 +771,7 @@ vec4 sampleLightmapQuasar(uvec4 v, vec3 pos, vec3 n) {
     // Only the very brightest spot (right at the source) whitens a little, so lava surfaces and torch bases
     // aren't neon; everywhere else keeps the full color.
     float level = (float(blockByte) - 8.0) / 240.0;
-    vec3 tint = mix(quasarBlockLightTint(pos, n), vec3(1.0), smoothstep(0.85, 1.0, level) * 0.3);
+    vec3 tint = mix(quasarBlockLightTint(pos, n), vec3(1.0), smoothstep(0.94, 1.0, level) * 0.3);
     return vec4(skyOnly.rgb + strength * tint, lm.a);
 }
 #define QUASAR_SAMPLE_LIGHTMAP(v, pos, n) sampleLightmapQuasar(v, pos, n)
