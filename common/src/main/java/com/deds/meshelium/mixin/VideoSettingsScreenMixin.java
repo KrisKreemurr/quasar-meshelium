@@ -71,6 +71,8 @@ public abstract class VideoSettingsScreenMixin extends OptionsSubScreen {
 
     @Inject(method = "addOptions", at = @At("HEAD"))
     private void meshelium$addMesheliumSettingsRow(CallbackInfo ci) {
+        // Quasar MC: Quasium's Video Settings sidebar has its own "Meshelium" tab, so no row on every page.
+        if (Boolean.getBoolean("quasarmc.quasium.videoSidebar")) return;
         this.list.addHeader(Component.translatable("meshelium.videosettings.header"));
         this.list.addBig(Button.builder(Component.translatable("meshelium.options.open"),
                 button -> this.minecraft.gui.setScreen(new MesheliumOptionsScreen(this)))

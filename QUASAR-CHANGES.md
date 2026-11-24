@@ -18,4 +18,8 @@ The mod id stays `meshelium` so existing settings carry over; the display name i
   baked block light from the baked block position to the exact light position when the baked value
   matches that light's open-space falloff. CI compiles the touched shader variants with glslc/spirv-val.
 
+- 2026-11-23: the "Meshelium Settings..." row in Video Settings is skipped when Quasar MC's Quasium sidebar
+  is active (system property `quasarmc.quasium.videoSidebar`); Quasium opens the same screen from its own
+  "Meshelium" sidebar tab.
+
 Planned: coloured block light in the terrain shader.
