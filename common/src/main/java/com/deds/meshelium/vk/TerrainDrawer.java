@@ -2129,6 +2129,8 @@ public final class TerrainDrawer {
         // translucent pass, the bfs masks, vanilla's own draws) lags the
         // stale list otherwise (mechanism on the method).
         healFrustumOnProjectionChange(cam);
+        quasarAtlasSampler = atlasSampler;
+        quasarAtlasView = atlasView;
         RenderTarget target = McCompat.opaqueTarget();
         GpuTextureView colorView = target.getColorTextureView();
         GpuTextureView depthView = target.getDepthTextureView();
@@ -3101,8 +3103,10 @@ public final class TerrainDrawer {
 
         // ---- 4. the pass: one dispatch per region ----
         long taskGroupsThisFrame = 0;
-        MesheliumGpuTimers.beginOpaque(encoder, frameSerial); // single pass ⇒
-                                                            // "opaqueA" = whole opaque
+        if (!quasarPortalPass) {
+            MesheliumGpuTimers.beginOpaque(encoder, frameSerial); // single pass ⇒
+                                                                // "opaqueA" = whole opaque
+        }
         try (RenderPass pass = encoder.createRenderPass(() -> "meshelium terrain opaque",
                 colorView, Optional.empty(), depthView, OptionalDouble.empty())) {
             VulkanRenderPass backendPass = (VulkanRenderPass) ((RenderPassAccessor) pass).meshelium$backend();
@@ -3203,7 +3207,10 @@ public final class TerrainDrawer {
             GpuSampler atlasSampler, GpuTextureView colorView,
             GpuTextureView depthView, GpuTextureView atlasView, GpuTextureView lightmapView) {
         // Wave-12: see drawTaskCulled — foreign path, invalidate the memo.
-        ccValid = false;
+        // Quasar MC: a portal view is not the main view; leave the main view's cull memo alone.
+        if (!quasarPortalPass) {
+            ccValid = false;
+        }
         // ---- CPU draw list: frustum cull + facing-bucket runs (wave 4) ----
         Frustum frustum = cam.cullFrustum;
         int camSx = cam.blockPos.getX() >> 4;
@@ -3279,9 +3286,13 @@ public final class TerrainDrawer {
             }
         }
 
-        lastDrawnSections = visibleSections;
+        if (!quasarPortalPass) {
+            lastDrawnSections = visibleSections;
+        }
         if (runCountTotal == 0) {
-            cpuCullFrames++;
+            if (!quasarPortalPass) {
+                cpuCullFrames++;
+            }
             return true; // own the group; nothing in the frustum has quads
         }
 
@@ -3293,8 +3304,10 @@ public final class TerrainDrawer {
         GpuBufferSlice sceneSlice = uploadScene(encoder, cam,
                 atlasView.getWidth(0), atlasView.getHeight(0));
 
-        MesheliumGpuTimers.beginOpaque(encoder, frameSerial); // single pass ⇒
-                                                            // "opaqueA" = whole opaque
+        if (!quasarPortalPass) {
+            MesheliumGpuTimers.beginOpaque(encoder, frameSerial); // single pass ⇒
+                                                                // "opaqueA" = whole opaque
+        }
         try (RenderPass pass = encoder.createRenderPass(() -> "meshelium terrain opaque",
                 colorView, Optional.empty(), depthView, OptionalDouble.empty())) {
             VulkanRenderPass backendPass = (VulkanRenderPass) ((RenderPassAccessor) pass).meshelium$backend();
@@ -3323,12 +3336,62 @@ public final class TerrainDrawer {
                 }
             }
         }
+        if (quasarPortalPass) {
+            quasarPortalSections = visibleSections;
+            return true;
+        }
         MesheliumGpuTimers.mark(encoder, MesheliumGpuTimers.POINT_AFTER_PHASE_A);
 
         framesDrawn++;
         totalDrawnSections += visibleSections;
         cpuCullFrames++;
         return true;
+    }
+
+    // ------------------------------------------------------------------
+    // Quasar MC: portal views
+    // ------------------------------------------------------------------
+
+    private static GpuSampler quasarAtlasSampler;
+    private static GpuTextureView quasarAtlasView;
+    private static boolean quasarPortalPass;
+    private static int quasarPortalWidth, quasarPortalHeight;
+    private static int quasarPortalSections;
+
+    public static CameraRenderState quasarMainCamera() {
+        return camera;
+    }
+
+    public static int quasarPortalSections() {
+        return quasarPortalSections;
+    }
+
+    /**
+     * Draws the resident opaque terrain for a portal's virtual camera into the given attachments, through the
+     * CPU-culled path (frustum culling only — the BFS masks and occlusion state belong to the main view). The
+     * colored-light camera, GPU timers and main-view statistics are left untouched.
+     */
+    public static boolean quasarDrawPortalView(CameraRenderState cam, GpuTextureView colorView,
+            GpuTextureView depthView, int width, int height) {
+        if (broken || cam == null || cam.cullFrustum == null) {
+            return false;
+        }
+        TerrainResidency.DrawSnapshot snap = snapshot;
+        GpuTextureView atlas = quasarAtlasView;
+        GpuSampler sampler = quasarAtlasSampler;
+        GpuTextureView lightmapView = Minecraft.getInstance().gameRenderer.lightmap();
+        if (snap == null || snap.arenaBackingHandle() == 0L || snap.sectionCount() == 0 || atlas == null
+                || sampler == null || lightmapView == null || colorView == null || depthView == null) {
+            return false;
+        }
+        quasarPortalPass = true;
+        quasarPortalWidth = width;
+        quasarPortalHeight = height;
+        try {
+            return drawCpuCulled(snap, cam, sampler, colorView, depthView, atlas, lightmapView);
+        } finally {
+            quasarPortalPass = false;
+        }
     }
 
     private static int pushRun(int runCount, float ox, float oy, float oz, int firstQuad, int quads) {
@@ -3996,8 +4059,9 @@ public final class TerrainDrawer {
             // the viewport. RenderTarget.width/height are public ints
             // (javap, 26.2 merged jar).
             RenderTarget mainTarget = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-            scene.putFloat(200, (float) mainTarget.width);
-            scene.putFloat(204, (float) mainTarget.height);
+            // Quasar MC: a portal view's viewport is its own target
+            scene.putFloat(200, (float) (quasarPortalPass ? quasarPortalWidth : mainTarget.width));
+            scene.putFloat(204, (float) (quasarPortalPass ? quasarPortalHeight : mainTarget.height));
 
             putQuasarLights(scene, cam);
             return encoder.transientMemory().uploadGpu(scene, 256, GpuBuffer.USAGE_UNIFORM);
@@ -4032,8 +4096,10 @@ public final class TerrainDrawer {
         scene.putInt(256, written);
         // 784: ivec4 camera block, 800: vec4 camera position within that block (for world-anchored lookups)
         int bx = (int) Math.floor(cx), by = (int) Math.floor(cy), bz = (int) Math.floor(cz);
-        com.deds.meshelium.quasar.QuasarColorLight.setCamera(bx >> 4, by >> 4, bz >> 4,
-                net.minecraft.client.Minecraft.getInstance().options.getEffectiveRenderDistance());
+        if (!quasarPortalPass) { // the colored-light sweep follows the player, not a portal camera
+            com.deds.meshelium.quasar.QuasarColorLight.setCamera(bx >> 4, by >> 4, bz >> 4,
+                    net.minecraft.client.Minecraft.getInstance().options.getEffectiveRenderDistance());
+        }
         scene.putInt(784, bx);
         scene.putInt(788, by);
         scene.putInt(792, bz);

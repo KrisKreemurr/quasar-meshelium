@@ -66,6 +66,8 @@ public final class TerrainKillSwitch {
                     // terrain. Fire it here instead; the two paths are
                     // exclusive by construction, so it runs exactly once.
                     helloProbe();
+                    // Quasar MC: portal views draw here (no pass open, opaque depth complete)
+                    com.deds.meshelium.quasar.QuasarPortalHook.fireAfterOpaque();
                     return true;
                 }
             } else if (group == ChunkSectionLayerGroup.TRANSLUCENT) {
