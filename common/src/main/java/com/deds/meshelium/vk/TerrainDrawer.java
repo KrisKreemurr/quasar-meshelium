@@ -3225,7 +3225,17 @@ public final class TerrainDrawer {
         int runCountTotal = 0;
         int visibleSections = 0;
 
-        for (int s = 0; s < n; s++) {
+        // Quasar MC: a portal view sees a narrow frustum, so test whole regions (8x4x8 sections) first and only
+        // walk the sections of visible regions. The main view keeps the plain slot walk.
+        int[] order = null;
+        int walkCount = n;
+        if (quasarPortalPass) {
+            order = quasarVisibleRegionSlots(snap, frustum);
+            walkCount = quasarOrderCount;
+        }
+
+        for (int k = 0; k < walkCount; k++) {
+            int s = order == null ? k : order[k];
             int o = s * TerrainResidency.DrawSnapshot.STRIDE;
             if (d[o + 18] == -2) {
                 // Tombstoned slot. This path never read [18] before, but
@@ -3357,6 +3367,87 @@ public final class TerrainDrawer {
     private static boolean quasarPortalPass;
     private static int quasarPortalWidth, quasarPortalHeight;
     private static int quasarPortalSections;
+
+    // per-snapshot index: the slots of each region (CSR) + slots with no region; rebuilt when the snapshot changes
+    private static long quasarIndexEpoch = Long.MIN_VALUE;
+    private static int[] quasarRegionStart = new int[0];
+    private static int[] quasarRegionSlots = new int[0];
+    private static int[] quasarRegionBox = new int[0]; // rx, ry, rz per region
+    private static int quasarRegionCount;
+    private static int[] quasarOrder = new int[0];
+    private static int quasarOrderCount;
+
+    private static void quasarBuildRegionIndex(TerrainResidency.DrawSnapshot snap) {
+        int[] d = snap.data();
+        int n = snap.maxSlot() + 1;
+        int regions = snap.regionCount();
+        int[] rd = snap.regionData();
+        int[] counts = new int[regions + 1]; // last bucket = sections without a region
+        int[] regionOf = new int[n];
+        for (int s = 0; s < n; s++) {
+            int o = s * TerrainResidency.DrawSnapshot.STRIDE;
+            if (d[o + 18] == -2) {
+                regionOf[s] = -1;
+                continue;
+            }
+            int idx = regionSlotByKey.get(regionKey(d[o] >> 3, d[o + 1] >> 2, d[o + 2] >> 3));
+            if (idx < 0 || idx >= regions) {
+                idx = regions;
+            }
+            regionOf[s] = idx;
+            counts[idx]++;
+        }
+        int[] start = new int[regions + 2];
+        for (int r = 0; r <= regions; r++) {
+            start[r + 1] = start[r] + counts[r];
+        }
+        int[] fill = new int[regions + 1];
+        int[] slots = new int[start[regions + 1]];
+        for (int s = 0; s < n; s++) {
+            int r = regionOf[s];
+            if (r < 0) continue;
+            slots[start[r] + fill[r]++] = s;
+        }
+        int[] box = new int[regions * 3];
+        for (int r = 0; r < regions; r++) {
+            int ro = r * TerrainResidency.DrawSnapshot.REGION_STRIDE;
+            box[r * 3] = rd[ro + 1];
+            box[r * 3 + 1] = rd[ro + 2];
+            box[r * 3 + 2] = rd[ro + 3];
+        }
+        quasarRegionStart = start;
+        quasarRegionSlots = slots;
+        quasarRegionBox = box;
+        quasarRegionCount = regions;
+        if (quasarOrder.length < slots.length) {
+            quasarOrder = new int[Math.max(slots.length, 1024)];
+        }
+    }
+
+    /** Slots of the regions whose box touches the frustum (plus region-less slots); count in quasarOrderCount. */
+    private static int[] quasarVisibleRegionSlots(TerrainResidency.DrawSnapshot snap, Frustum frustum) {
+        if (snap.epoch() != quasarIndexEpoch) {
+            quasarBuildRegionIndex(snap);
+            quasarIndexEpoch = snap.epoch();
+        }
+        int c = 0;
+        int[] out = quasarOrder;
+        for (int r = 0; r <= quasarRegionCount; r++) {
+            if (r < quasarRegionCount) {
+                double x = quasarRegionBox[r * 3] * 128.0;
+                double y = quasarRegionBox[r * 3 + 1] * 64.0;
+                double z = quasarRegionBox[r * 3 + 2] * 128.0;
+                if (!frustum.isVisible(new AABB(x, y, z, x + 128.0, y + 64.0, z + 128.0))) {
+                    continue;
+                }
+            }
+            for (int i = quasarRegionStart[r]; i < quasarRegionStart[r + 1]; i++) {
+                out[c++] = quasarRegionSlots[i];
+            }
+        }
+        quasarOrderCount = c;
+        return out;
+    }
 
     public static CameraRenderState quasarMainCamera() {
         return camera;
