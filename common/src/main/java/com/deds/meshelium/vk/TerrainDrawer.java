@@ -3961,7 +3961,7 @@ public final class TerrainDrawer {
     private static GpuBufferSlice uploadScene(CommandEncoder encoder, CameraRenderState cam,
             int atlasWidth, int atlasHeight) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            ByteBuffer scene = stack.calloc(SCENE_BYTES);
+            ByteBuffer scene = stack.calloc(QUASAR_SCENE_BYTES);
             cam.viewRotationMatrix.get(scene); // 64 bytes at position 0, position unchanged
             scene.putFloat(64, (float) atlasWidth);
             scene.putFloat(68, (float) atlasHeight);
@@ -3998,8 +3998,37 @@ public final class TerrainDrawer {
             scene.putFloat(200, (float) mainTarget.width);
             scene.putFloat(204, (float) mainTarget.height);
 
+            putQuasarLights(scene, cam);
             return encoder.transientMemory().uploadGpu(scene, 256, GpuBuffer.USAGE_UNIFORM);
         }
+    }
+
+    /**
+     * Quasar MC: the scene UBO grows past the 208-byte layout with the moving-light list read by
+     * terrain.mesh (non-Sodium variants only): 208..256 padding, 256 ivec4 count, 272 vec4 exact[16]
+     * (camera-relative xyz, w = level), 528 vec4 baked[16] (camera-relative block centre of the bake).
+     * Every other stage declares a prefix of the block, which stays legal.
+     */
+    static final int QUASAR_SCENE_BYTES = 784;
+
+    private static void putQuasarLights(ByteBuffer scene, CameraRenderState cam) {
+        int n = com.deds.meshelium.quasar.QuasarLights.count();
+        double[] d = com.deds.meshelium.quasar.QuasarLights.data();
+        double cx = cam.pos.x, cy = cam.pos.y, cz = cam.pos.z;
+        int written = 0;
+        for (int i = 0; i < n && (i + 1) * com.deds.meshelium.quasar.QuasarLights.STRIDE <= d.length; i++) {
+            int b = i * com.deds.meshelium.quasar.QuasarLights.STRIDE;
+            int e = 272 + written * 16, k = 528 + written * 16;
+            scene.putFloat(e, (float) (d[b] - cx));
+            scene.putFloat(e + 4, (float) (d[b + 1] - cy));
+            scene.putFloat(e + 8, (float) (d[b + 2] - cz));
+            scene.putFloat(e + 12, (float) d[b + 6]);
+            scene.putFloat(k, (float) (d[b + 3] - cx));
+            scene.putFloat(k + 4, (float) (d[b + 4] - cy));
+            scene.putFloat(k + 8, (float) (d[b + 5] - cz));
+            written++;
+        }
+        scene.putInt(256, written);
     }
 
     private static void putPlane(ByteBuffer dst, int offset, float a, float b, float c, float d) {

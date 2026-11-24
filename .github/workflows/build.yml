@@ -15,6 +15,10 @@ jobs:
           java-version: |
             21
             25
+      - name: Shader check (Quasar changes)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq glslc spirv-tools >/dev/null
+          sh tools/quasar_shader_check.sh /tmp/qshader
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false

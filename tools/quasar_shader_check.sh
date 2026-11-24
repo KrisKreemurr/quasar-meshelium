@@ -1,0 +1,22 @@
+#!/bin/sh
+# Quasar MC: compile the terrain shaders the way MesheliumShaderCompiler does (glslc, vulkan1.2),
+# for the variants our changes touch, so a GLSL mistake fails CI instead of the game launch.
+set -u
+S=common/src/main/resources/assets/meshelium/shaders
+OUT=${1:-/tmp/qshader}; mkdir -p "$OUT"
+COMMON="-DMESHELIUM_ARENA_BLOCKS=1 -DMESHELIUM_ARENA_BLOCK_SHIFT=24 -DMESHELIUM_ARENA_BLOCK_MASK=16777215u -DMESHELIUM_WG_SIZE=32 -DMESHELIUM_TASK_WG_SIZE=32 -DMESHELIUM_VIS_UVEC4S=1024 -DMESHELIUM_PACKED_VARYINGS=1 -DMESHELIUM_NO_DISCARD=0 -DMESHELIUM_TRANS_QUADS=16 -DMESHELIUM_DIAG_NOFOG=0 -DMESHELIUM_SODIUM_BATCH=0 -DMESHELIUM_SODIUM_DRAWID=0 -DMESHELIUM_SODIUM_TASK=0 -DMESHELIUM_SODIUM_MESH_FRUSTUM=0 -DMESHELIUM_SODIUM_FRUSTUM_SLACK=1.125 -DMESHELIUM_LISTS_SSBO=0"
+fail=0
+c() {
+  name=$1; shift
+  if glslc --target-env=vulkan1.2 -fshader-stage=mesh $COMMON "$@" -o "$OUT/$name.spv" "$S/terrain.mesh" && spirv-val --target-env vulkan1.2 "$OUT/$name.spv"; then
+    echo "OK   $name"
+  else
+    echo "FAIL $name"; fail=1
+  fi
+}
+c mesh_cpu        -DMESHELIUM_LIGHT_STUB=0 -DMESHELIUM_TASK_CULL=0 -DMESHELIUM_TRANSLUCENT=0 -DMESHELIUM_SODIUM=0
+c mesh_task       -DMESHELIUM_LIGHT_STUB=0 -DMESHELIUM_TASK_CULL=1 -DMESHELIUM_TRANSLUCENT=0 -DMESHELIUM_SODIUM=0
+c mesh_trans      -DMESHELIUM_LIGHT_STUB=0 -DMESHELIUM_TASK_CULL=0 -DMESHELIUM_TRANSLUCENT=1 -DMESHELIUM_SODIUM=0
+c mesh_sodium     -DMESHELIUM_LIGHT_STUB=0 -DMESHELIUM_TASK_CULL=0 -DMESHELIUM_TRANSLUCENT=0 -DMESHELIUM_SODIUM=1
+c mesh_lightstub  -DMESHELIUM_TASK_CULL=0 -DMESHELIUM_TRANSLUCENT=0 -DMESHELIUM_SODIUM=0 -DMESHELIUM_LIGHT_STUB=1
+exit $fail

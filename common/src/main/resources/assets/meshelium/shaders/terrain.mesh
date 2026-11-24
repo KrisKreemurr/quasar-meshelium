@@ -493,6 +493,15 @@ layout(set = 0, binding = 1, std140) uniform MesheliumScene {
                          // zw = viewport size in pixels; a slider at 0
                          // uploads 3.4e38, which every real distance
                          // compares under, so the gate never arms
+#if !MESHELIUM_SODIUM
+    // Quasar MC: moving lights (TerrainDrawer.putQuasarLights, offsets 208-784)
+    vec4 QuasarPad0;
+    vec4 QuasarPad1;
+    vec4 QuasarPad2;
+    ivec4 QuasarLightCount;
+    vec4 QuasarLightExact[16]; // camera-relative exact position, w = light level
+    vec4 QuasarLightBaked[16]; // camera-relative block centre the chunk bake used
+#endif
 };
 
 // Vanilla's own Projection UBO slice (RenderSystem.getProjectionMatrixBuffer())
@@ -666,6 +675,46 @@ vec4 sampleLightmap(uvec4 v) {
 #endif
 }
 
+#if !MESHELIUM_SODIUM && !MESHELIUM_LIGHT_STUB
+// Quasar MC: smooth moving lights.
+//
+// The chunk mesh already holds each moving light baked at a whole-block position (Quasium, round light,
+// walls respected). Here a corner whose baked block light matches what a light would give it in open
+// space - checked a half block to either side along the face normal, where smooth lighting sampled it -
+// gets slid to the light's exact position: baked + (distance to bake centre - distance to exact). Behind
+// walls the baked value does not match the open-space prediction, so it is left alone (no leaks), and
+// corners lit by something brighter are left alone too.
+uint quasarDynamicLight(uint lightByte, vec3 pos, vec3 n) {
+    int count = QuasarLightCount.x;
+    if (count <= 0) return lightByte;
+    float baked = (float(lightByte) - 8.0) / 16.0;
+    float best = 1.0e9;
+    float result = baked;
+    for (int i = 0; i < count; ++i) {
+        float lum = QuasarLightExact[i].w;
+        for (int s = -1; s <= 1; s += 2) {
+            vec3 q = pos + n * (0.5 * float(s));
+            float dBaked = length(q - QuasarLightBaked[i].xyz);
+            float err = abs(baked - max(0.0, lum - dBaked));
+            if (err < 0.9 && err < best) {
+                best = err;
+                result = baked + dBaked - length(q - QuasarLightExact[i].xyz);
+            }
+        }
+    }
+    return uint(clamp(round(clamp(result, 0.0, 15.0) * 16.0) + 8.0, 8.0, 248.0));
+}
+
+vec4 sampleLightmapQuasar(uvec4 v, vec3 pos, vec3 n) {
+    uint blockByte = quasarDynamicLight((v.y >> 24) & 0xFFu, pos, n);
+    uvec2 light = uvec2(blockByte, (v.z >> 24) & 0xFFu);
+    return textureLod(Sampler2, vec2(light) / 256.0, 0.0);
+}
+#define QUASAR_SAMPLE_LIGHTMAP(v, pos, n) sampleLightmapQuasar(v, pos, n)
+#else
+#define QUASAR_SAMPLE_LIGHTMAP(v, pos, n) sampleLightmap(v)
+#endif
+
 // One quad's 4 vertices + 2 triangles into output slot `slot` (wave-4 body
 // verbatim, hoisted so all three variants share the parity-proven math).
 void meshelium_emitQuad(uint slot, uint quad, vec3 origin) {
@@ -697,6 +746,11 @@ void meshelium_emitQuad(uint slot, uint quad, vec3 origin) {
     vec4 clipFirst = vec4(0.0);
     vec2 pxMin = vec2(0.0);
     vec2 pxMax = vec2(0.0);
+    // Quasar MC: face normal for the smooth moving-light lookup (sign does not matter, both sides are tried)
+    vec3 quasarN = cross(decodeVertexPosition(vs[1]) - decodeVertexPosition(vs[0]),
+                         decodeVertexPosition(vs[2]) - decodeVertexPosition(vs[0]));
+    float quasarNLen = length(quasarN);
+    quasarN = quasarNLen > 1.0e-6 ? quasarN / quasarNLen : vec3(0.0);
     for (uint i = 0u; i < 4u; ++i) {
         uvec4 v = vs[i];
         uint vi = vertBase + i;
@@ -729,13 +783,13 @@ void meshelium_emitQuad(uint slot, uint quad, vec3 origin) {
 #else
         texFog[vi] = vec4(decodeVertexUV(v), length(pos), max(length(pos.xz), abs(pos.y)));
 #endif
-        vertexColor[vi] = vec4(decodeVertexColor(v), 1.0) * sampleLightmap(v);
+        vertexColor[vi] = vec4(decodeVertexColor(v), 1.0) * QUASAR_SAMPLE_LIGHTMAP(v, pos, quasarN);
 #else
         // Write order preserved from the shipped shader so that the A/B
         // lever reproduces its SPIR-V byte for byte (shader_parity.sh).
         sphericalVertexDistance[vi] = length(pos);
         cylindricalVertexDistance[vi] = max(length(pos.xz), abs(pos.y));
-        vertexColor[vi] = vec4(decodeVertexColor(v), 1.0) * sampleLightmap(v);
+        vertexColor[vi] = vec4(decodeVertexColor(v), 1.0) * QUASAR_SAMPLE_LIGHTMAP(v, pos, quasarN);
         texCoord0[vi] = decodeVertexUV(v);
 #endif
         materialBits[vi] = (v.y >> 16) & 0xFFu; // flat; provoking vertices
