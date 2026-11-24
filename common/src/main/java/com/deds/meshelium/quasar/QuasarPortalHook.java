@@ -45,6 +45,11 @@ public final class QuasarPortalHook {
      * D32, reverse-Z: clear depth to 0 first). {@code cam} needs pos, blockPos, viewRotationMatrix,
      * projectionMatrix and cullFrustum (prepared). Returns false when Meshelium cannot draw right now.
      */
+    /** Sections the last {@link #drawTerrain} call drew (for the portal F3 line). */
+    public static int lastSections() {
+        return TerrainDrawer.quasarPortalSections();
+    }
+    
     public static boolean drawTerrain(CameraRenderState cam, GpuTextureView color, GpuTextureView depth, int width,
             int height) {
         return TerrainDrawer.quasarDrawPortalView(cam, color, depth, width, height);

@@ -3384,6 +3384,7 @@ public final class TerrainDrawer {
                 || sampler == null || lightmapView == null || colorView == null || depthView == null) {
             return false;
         }
+        quasarPortalSections = 0;
         quasarPortalPass = true;
         quasarPortalWidth = width;
         quasarPortalHeight = height;
