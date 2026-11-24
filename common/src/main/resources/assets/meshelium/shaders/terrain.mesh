@@ -501,6 +501,8 @@ layout(set = 0, binding = 1, std140) uniform MesheliumScene {
     ivec4 QuasarLightCount;
     vec4 QuasarLightExact[16]; // camera-relative exact position, w = light level
     vec4 QuasarLightBaked[16]; // camera-relative block centre the chunk bake used
+    ivec4 QuasarCameraBlock;   // camera's block coordinates
+    vec4 QuasarCameraFrac;     // camera position within that block
 #endif
 };
 
@@ -706,22 +708,47 @@ uint quasarDynamicLight(uint lightByte, vec3 pos, vec3 n) {
 }
 
 // Quasar MC: block-light color (binding 12). header.x: 0 off, 1 test pattern (all block light red), 2 color.
+// Layout: see QuasarColorLight.java (header, section table ring 64x32x64, 16^3 RGBA8 pages).
 layout(set = 0, binding = 12, std430) readonly buffer QuasarColorLight {
     uvec4 QuasarColorHeader;
-    uint QuasarColorCells[];
+    uint QuasarColorData[];
 };
+const uint QUASAR_TABLE = 64u * 32u * 64u;
 
+uint quasarColorCell(ivec3 b) {
+    ivec3 s = b >> 4;
+    uint ti = uint(((s.y & 31) * 64 + (s.z & 63)) * 64 + (s.x & 63));
+    uint key = (uint(s.x) & 0x3FFu) | ((uint(s.y) & 0x3FFu) << 10) | ((uint(s.z) & 0x3FFu) << 20) | 0x40000000u;
+    if (QuasarColorData[ti * 2u] != key) return 0u;
+    uint page = QuasarColorData[ti * 2u + 1u];
+    if (page == 0u) return 0u;
+    ivec3 l = b & 15;
+    return QuasarColorData[QUASAR_TABLE * 2u + (page - 1u) * 4096u + uint((l.y * 16 + l.z) * 16 + l.x)];
+}
+
+// Color of the block light at a terrain corner: the 8 blocks around the corner, weighted by how much block
+// light each holds (solid blocks hold none), so colors blend smoothly between lights.
 vec3 quasarBlockLightTint(vec3 pos, vec3 n) {
     uint mode = QuasarColorHeader.x;
     if (mode == 1u) return vec3(1.0, 0.15, 0.15);
-    return vec3(1.0);
+    ivec3 c = QuasarCameraBlock.xyz + ivec3(round(pos + QuasarCameraFrac.xyz));
+    vec3 sum = vec3(0.0);
+    float weight = 0.0;
+    for (int i = 0; i < 8; ++i) {
+        ivec3 b = c - ivec3(i & 1, (i >> 1) & 1, (i >> 2) & 1);
+        uint cell = quasarColorCell(b);
+        float a = float(cell >> 24);
+        sum += a * vec3(float(cell & 0xFFu), float((cell >> 8) & 0xFFu), float((cell >> 16) & 0xFFu)) / 255.0;
+        weight += a;
+    }
+    return weight > 0.0 ? sum / weight : vec3(1.0);
 }
 
 vec4 sampleLightmapQuasar(uvec4 v, vec3 pos, vec3 n) {
     uint blockByte = quasarDynamicLight((v.y >> 24) & 0xFFu, pos, n);
     uvec2 light = uvec2(blockByte, (v.z >> 24) & 0xFFu);
     vec4 lm = textureLod(Sampler2, vec2(light) / 256.0, 0.0);
-    if (QuasarColorHeader.x == 0u) return lm;
+    if (QuasarColorHeader.x == 0u || blockByte <= 8u) return lm;
     // Tint only what block light adds on top of sky light, so daylight stays white and night still works.
     vec4 skyOnly = textureLod(Sampler2, vec2(8.0, float(light.y)) / 256.0, 0.0);
     vec3 blockPart = max(lm.rgb - skyOnly.rgb, vec3(0.0));

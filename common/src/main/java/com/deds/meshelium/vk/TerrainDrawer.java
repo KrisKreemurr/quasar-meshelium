@@ -4010,7 +4010,7 @@ public final class TerrainDrawer {
      * (camera-relative xyz, w = level), 528 vec4 baked[16] (camera-relative block centre of the bake).
      * Every other stage declares a prefix of the block, which stays legal.
      */
-    static final int QUASAR_SCENE_BYTES = 784;
+    static final int QUASAR_SCENE_BYTES = 816;
 
     private static void putQuasarLights(ByteBuffer scene, CameraRenderState cam) {
         int n = com.deds.meshelium.quasar.QuasarLights.count();
@@ -4030,6 +4030,14 @@ public final class TerrainDrawer {
             written++;
         }
         scene.putInt(256, written);
+        // 784: ivec4 camera block, 800: vec4 camera position within that block (for world-anchored lookups)
+        int bx = (int) Math.floor(cx), by = (int) Math.floor(cy), bz = (int) Math.floor(cz);
+        scene.putInt(784, bx);
+        scene.putInt(788, by);
+        scene.putInt(792, bz);
+        scene.putFloat(800, (float) (cx - bx));
+        scene.putFloat(804, (float) (cy - by));
+        scene.putFloat(808, (float) (cz - bz));
     }
 
     private static void putPlane(ByteBuffer dst, int offset, float a, float b, float c, float d) {
