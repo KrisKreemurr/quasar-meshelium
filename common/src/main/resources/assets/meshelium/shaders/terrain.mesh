@@ -752,7 +752,11 @@ vec4 sampleLightmapQuasar(uvec4 v, vec3 pos, vec3 n) {
     // Tint only what block light adds on top of sky light, so daylight stays white and night still works.
     vec4 skyOnly = textureLod(Sampler2, vec2(8.0, float(light.y)) / 256.0, 0.0);
     vec3 blockPart = max(lm.rgb - skyOnly.rgb, vec3(0.0));
-    return vec4(skyOnly.rgb + blockPart * quasarBlockLightTint(pos, n), lm.a);
+    // Very bright light reads whiter (a fire's core vs its glow): fade the tint toward white at the top of
+    // the range, so lava surfaces and torch bases aren't over-saturated while the falloff keeps its color.
+    float level = (float(blockByte) - 8.0) / 240.0;
+    vec3 tint = mix(quasarBlockLightTint(pos, n), vec3(1.0), smoothstep(0.6, 1.0, level) * 0.65);
+    return vec4(skyOnly.rgb + blockPart * tint, lm.a);
 }
 #define QUASAR_SAMPLE_LIGHTMAP(v, pos, n) sampleLightmapQuasar(v, pos, n)
 #else
