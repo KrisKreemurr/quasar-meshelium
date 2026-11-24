@@ -10,7 +10,7 @@ The mod id stays `meshelium` so existing settings carry over; the display name i
 ## Changes from upstream
 
 - 2026-11-23: forked from upstream `main` (Meshelium 1.6.2). Added a GitHub Actions build for the
-  26.3 NeoForge jar, changed the display name/authors line. No code changes yet.
+  26.3 NeoForge jar, changed the display name/authors line, jar named QuasarMeshelium-neoforge-*.jar. No code changes yet.
 
 Planned: per-pixel dynamic lights and coloured block light in the terrain shader, fed by Quasar MC's
 Quasium mod.

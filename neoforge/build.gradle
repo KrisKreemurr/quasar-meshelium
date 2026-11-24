@@ -35,7 +35,7 @@ version = project.mod_version_full
 group = project.maven_group
 
 base {
-	archivesName = 'meshelium-neoforge'
+	archivesName = 'QuasarMeshelium-neoforge'
 }
 
 // BLOCK 0 - values shared by installSodiumForRun (block 3) and runs.client
