@@ -264,7 +264,7 @@ public final class MesheliumScaling {
     }
 
     /** Bindings the task variant declares besides the arena element(s). */
-    private static final int TASK_NON_ARENA_BINDINGS = 11;
+    private static final int TASK_NON_ARENA_BINDINGS = 12; // Quasar MC: +1 (binding 12, color light)
     /**
      * Storage buffers the MESH stage declares besides the arena.
      *
@@ -274,9 +274,9 @@ public final class MesheliumScaling {
      * {@code TerrainDrawer.taskStageHasRoom()}. Do not assume this line
      * covers both.</p>
      */
-    private static final int MESH_STAGE_OTHER_STORAGE = 2;
+    private static final int MESH_STAGE_OTHER_STORAGE = 3; // Quasar MC: +1 (binding 12, color light)
     /** Storage buffers the task SET declares besides the arena. */
-    private static final int TASK_SET_OTHER_STORAGE = 5;
+    private static final int TASK_SET_OTHER_STORAGE = 6; // Quasar MC: +1 (binding 12, color light)
 
     /**
      * The ceiling the default policy would choose, ignoring the live

@@ -566,6 +566,9 @@ public final class TerrainDrawPipeline {
             // minimum; SodiumGpuVisibilityLayout.TASK_STAGE_STORAGE_BUFFERS).
             int bindingCount = sodiumTask ? 11
                     : (taskCull ? 12 : (translucent ? 9 : (sodiumBatched ? 9 : 7)));
+            // Quasar MC: binding 12 = block-light color (mesh stage), every non-Sodium variant.
+            boolean quasarColor = !sodium;
+            if (quasarColor) bindingCount++;
             VkDescriptorSetLayoutBinding.Buffer bindings = VkDescriptorSetLayoutBinding.calloc(bindingCount, stack);
             int sceneStages = taskCull ? (taskStage | meshStage | fragStage) : (meshStage | fragStage);
             // Binding 0 is the arena, now one element per block. Compiled
@@ -624,6 +627,9 @@ public final class TerrainDrawPipeline {
                 // gl_DrawID one simply never reads the map.
                 binding(bindings.get(7), 9, VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, meshStage);
                 binding(bindings.get(8), 10, VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, meshStage);
+            }
+            if (quasarColor) {
+                binding(bindings.get(bindingCount - 1), 12, VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, meshStage);
             }
             VkDescriptorSetLayoutCreateInfo setLayoutInfo = VkDescriptorSetLayoutCreateInfo.calloc(stack)
                     .sType$Default()

@@ -3894,7 +3894,8 @@ public final class TerrainDrawer {
             VkDescriptorImageInfo.Buffer atlasInfo = imageInfo(stack, atlasView, atlasSampler);
             VkDescriptorImageInfo.Buffer lightmapInfo = imageInfo(stack, lightmapView, lightmapSampler);
 
-            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(9, stack);
+            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(10, stack);
+            quasarColorWrite(stack, writes.get(9), arenaBlocks[0]);
             bufferWrite(writes.get(0), 0, VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, arenaInfo);
             bufferWrite(writes.get(1), 1, VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, sceneInfo);
             bufferWrite(writes.get(2), 2, VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, projectionInfo);
@@ -4251,7 +4252,8 @@ public final class TerrainDrawer {
             VkDescriptorImageInfo.Buffer atlasInfo = imageInfo(stack, atlasView, atlasSampler);
             VkDescriptorImageInfo.Buffer lightmapInfo = imageInfo(stack, lightmapView, lightmapSampler);
 
-            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(taskMode ? 12 : 7, stack);
+            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(taskMode ? 13 : 8, stack);
+            quasarColorWrite(stack, writes.get(taskMode ? 12 : 7), arenaBlocks[0]);
             bufferWrite(writes.get(0), 0, VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, arenaInfo);
             bufferWrite(writes.get(1), 1, VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, sceneInfo);
             bufferWrite(writes.get(2), 2, VK10.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, projectionInfo);
@@ -4297,6 +4299,18 @@ public final class TerrainDrawer {
             KHRPushDescriptor.vkCmdPushDescriptorSetKHR(cb,
                     VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, p.pipelineLayout(), 0, writes);
         }
+    }
+
+    /**
+     * Quasar MC: binding 12, the block-light color buffer. Falls back to the first arena block as a
+     * type-correct dummy if it could not be created (the shader then reads header.x of arena data; it only
+     * tints when that equals 1 or 2, which is why {@link com.deds.meshelium.quasar.QuasarColorLight} failing
+     * also means the color path is skipped in practice).
+     */
+    private static void quasarColorWrite(MemoryStack stack, VkWriteDescriptorSet write, long fallback) {
+        long buf = com.deds.meshelium.quasar.QuasarColorLight.vkBuffer();
+        bufferWrite(write, 12, VK10.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                bufferInfo(stack, buf != 0L ? buf : fallback, 0, VK10.VK_WHOLE_SIZE));
     }
 
     private static VkDescriptorBufferInfo.Buffer bufferInfo(MemoryStack stack, long vkBuffer,

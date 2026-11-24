@@ -22,4 +22,10 @@ The mod id stays `meshelium` so existing settings carry over; the display name i
   is active (system property `quasarmc.quasium.videoSidebar`); Quasium opens the same screen from its own
   "Meshelium" sidebar tab.
 
-Planned: coloured block light in the terrain shader.
+- 2026-11-23: block-light color, step 1 (plumbing): new storage buffer at binding 12 (mesh stage) in every
+  non-Sodium terrain pipeline (`TerrainDrawPipeline`, pushed in both `TerrainDrawer` descriptor pushes;
+  descriptor budget constants in `MesheliumScaling` +1). `quasar/QuasarColorLight` owns the host-mapped
+  buffer (header + world-anchored RGBA8 ring, 128x64x128). `terrain.mesh` tints only the block-light part
+  of the lightmap (sky light stays white). Step 1 ships a test pattern (all block light red) to prove it.
+
+Planned: block-light color in the terrain shader.
