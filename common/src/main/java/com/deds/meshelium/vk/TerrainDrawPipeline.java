@@ -529,7 +529,7 @@ public final class TerrainDrawPipeline {
                     "/assets/meshelium/shaders/terrain.frag", MesheliumShaderCompiler.KIND_FRAGMENT, macros);
             return build(device, vkColorFormat, vkDepthFormat,
                     taskModule, meshModule, fragModule, workgroupQuads, taskCull, extendedLists,
-                    transQuads, arenaBlocks, sodiumBatched, sodiumTask);
+                    transQuads, arenaBlocks, sodiumBatched, sodiumTask, sodium);
         } finally {
             if (taskModule != 0L) {
                 VK10.vkDestroyShaderModule(device, taskModule, null);
@@ -546,7 +546,7 @@ public final class TerrainDrawPipeline {
     private static TerrainDrawPipeline build(VkDevice device, int vkColorFormat, int vkDepthFormat,
             long taskModule, long meshModule, long fragModule, int workgroupQuads, boolean taskCull,
             boolean extendedLists, int transQuads, int arenaBlocks, boolean sodiumBatched,
-            boolean sodiumTask) {
+            boolean sodiumTask, boolean sodium) {
         boolean translucent = transQuads > 0;
         try (MemoryStack stack = MemoryStack.stackPush()) {
             int taskStage = EXTMeshShader.VK_SHADER_STAGE_TASK_BIT_EXT;
