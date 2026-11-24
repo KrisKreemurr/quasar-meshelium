@@ -702,6 +702,8 @@ public final class MesheliumTerrainGpu implements TerrainGpuHost {
 
     @Override
     public void endFrame() {
+        // Quasar MC: block-light color table uploads (own command buffer; idle frames record nothing).
+        com.deds.meshelium.quasar.QuasarColorLight.pump(vma, encoder, currentFrame, FREE_FRAME_LAG);
         if (arenaCopies.isEmpty() && arenaLateCopies.isEmpty() && sectionCopies.isEmpty()
                 && regionCopies.isEmpty() && fills.isEmpty()) {
             return; // idle frame: no command buffer, no allocations

@@ -759,7 +759,7 @@ vec4 sampleLightmapQuasar(uvec4 v, vec3 pos, vec3 n) {
     uint blockByte = quasarDynamicLight((v.y >> 24) & 0xFFu, pos, n);
     uvec2 light = uvec2(blockByte, (v.z >> 24) & 0xFFu);
     vec4 lm = textureLod(Sampler2, vec2(light) / 256.0, 0.0);
-    if (QuasarColorHeader.x == 0u || blockByte <= 8u) return lm;
+    if (QuasarColorHeader.y != 0x51A5C010u || QuasarColorHeader.x == 0u || blockByte <= 8u) return lm;
     // Tint only what block light adds on top of sky light, so daylight stays white and night still works.
     vec4 skyOnly = textureLod(Sampler2, vec2(8.0, float(light.y)) / 256.0, 0.0);
     vec3 blockPart = max(lm.rgb - skyOnly.rgb, vec3(0.0));
