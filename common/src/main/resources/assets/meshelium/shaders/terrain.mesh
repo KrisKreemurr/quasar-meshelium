@@ -715,28 +715,39 @@ layout(set = 0, binding = 12, std430) readonly buffer QuasarColorLight {
 };
 const uint QUASAR_TABLE = 64u * 32u * 64u;
 
-uint quasarColorCell(ivec3 b) {
-    ivec3 s = b >> 4;
+// Start of a section's color page in QuasarColorData, or 0xFFFFFFFF if the section has no colors.
+uint quasarPageBase(ivec3 s) {
     uint ti = uint(((s.y & 31) * 64 + (s.z & 63)) * 64 + (s.x & 63));
     uint key = (uint(s.x) & 0x3FFu) | ((uint(s.y) & 0x3FFu) << 10) | ((uint(s.z) & 0x3FFu) << 20) | 0x40000000u;
-    if (QuasarColorData[ti * 2u] != key) return 0u;
+    if (QuasarColorData[ti * 2u] != key) return 0xFFFFFFFFu;
     uint page = QuasarColorData[ti * 2u + 1u];
-    if (page == 0u) return 0u;
+    if (page == 0u) return 0xFFFFFFFFu;
+    return QUASAR_TABLE * 2u + (page - 1u) * 4096u;
+}
+
+uint quasarCellIn(uint base, ivec3 b) {
+    if (base == 0xFFFFFFFFu) return 0u;
     ivec3 l = b & 15;
-    return QuasarColorData[QUASAR_TABLE * 2u + (page - 1u) * 4096u + uint((l.y * 16 + l.z) * 16 + l.x)];
+    return QuasarColorData[base + uint((l.y * 16 + l.z) * 16 + l.x)];
 }
 
 // Color of the block light at a terrain corner: the 8 blocks around the corner, weighted by how much block
-// light each holds (solid blocks hold none), so colors blend smoothly between lights.
+// light each holds (solid blocks hold none), so colors blend smoothly between lights. Most corners sit inside
+// one section, so the section table is read once for all 8 blocks.
 vec3 quasarBlockLightTint(vec3 pos, vec3 n) {
     uint mode = QuasarColorHeader.x;
     if (mode == 1u) return vec3(1.0, 0.15, 0.15);
     ivec3 c = QuasarCameraBlock.xyz + ivec3(round(pos + QuasarCameraFrac.xyz));
+    ivec3 sLo = (c - 1) >> 4;
+    ivec3 sHi = c >> 4;
+    bool oneSection = all(equal(sLo, sHi));
+    uint base = quasarPageBase(sHi);
+    if (oneSection && base == 0xFFFFFFFFu) return vec3(1.0);
     vec3 sum = vec3(0.0);
     float weight = 0.0;
     for (int i = 0; i < 8; ++i) {
         ivec3 b = c - ivec3(i & 1, (i >> 1) & 1, (i >> 2) & 1);
-        uint cell = quasarColorCell(b);
+        uint cell = quasarCellIn(oneSection ? base : quasarPageBase(b >> 4), b);
         float a = float(cell >> 24);
         sum += a * vec3(float(cell & 0xFFu), float((cell >> 8) & 0xFFu), float((cell >> 16) & 0xFFu)) / 255.0;
         weight += a;
@@ -755,6 +766,8 @@ vec4 sampleLightmapQuasar(uvec4 v, vec3 pos, vec3 n) {
     // The color comes entirely from the light's own color: keep only how BRIGHT vanilla's block light is
     // (its strongest channel) and drop vanilla's built-in warm hue, which would otherwise mix in.
     float strength = max(blockPart.r, max(blockPart.g, blockPart.b));
+    // Where sky light outweighs the block light the color can't show: skip the lookup.
+    if (strength < 0.02) return lm;
     // Only the very brightest spot (right at the source) whitens a little, so lava surfaces and torch bases
     // aren't neon; everywhere else keeps the full color.
     float level = (float(blockByte) - 8.0) / 240.0;
