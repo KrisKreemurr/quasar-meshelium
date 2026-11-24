@@ -4032,6 +4032,8 @@ public final class TerrainDrawer {
         scene.putInt(256, written);
         // 784: ivec4 camera block, 800: vec4 camera position within that block (for world-anchored lookups)
         int bx = (int) Math.floor(cx), by = (int) Math.floor(cy), bz = (int) Math.floor(cz);
+        com.deds.meshelium.quasar.QuasarColorLight.setCamera(bx >> 4, by >> 4, bz >> 4,
+                net.minecraft.client.Minecraft.getInstance().options.getEffectiveRenderDistance());
         scene.putInt(784, bx);
         scene.putInt(788, by);
         scene.putInt(792, bz);

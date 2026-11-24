@@ -29,3 +29,7 @@ The mod id stays `meshelium` so existing settings carry over; the display name i
   of the lightmap (sky light stays white). Step 1 ships a test pattern (all block light red) to prove it.
 
 Planned: block-light color in the terrain shader.
+
+- Colored light: pages of sections beyond render distance are freed (swept a few per frame), and a full pool
+  gives up its farthest page. Before, unloaded sections kept their pages forever, the pool filled while exploring,
+  and new sections near the player stayed white. Pool raised to 4096 pages (64 MB).

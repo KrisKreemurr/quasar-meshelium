@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public final class QuasarColorLight {
     public static final int TX = 64, TY = 32, TZ = 64;
     public static final int TABLE = TX * TY * TZ;
-    public static final int PAGES = 2048;
+    public static final int PAGES = 4096;
     public static final int CELLS = 4096;
     private static final int VALID = 0x40000000;
     private static final long HEADER_BYTES = 16;
@@ -51,6 +51,11 @@ public final class QuasarColorLight {
     private static final ArrayDeque<Integer> freePages = new ArrayDeque<>();
     private static final int[] tableKey = new int[TABLE];
     private static final int[] tablePage = new int[TABLE]; // page + 1, 0 = none
+    // Owner of each page (slot -1 = free), so pages of sections far from the camera can be taken back.
+    private static final int[] pageSlot = new int[PAGES];
+    private static final int[] pageSx = new int[PAGES], pageSy = new int[PAGES], pageSz = new int[PAGES];
+    private static volatile int camSx, camSy, camSz, keepRadius = 64;
+    private static int sweep;
 
     private QuasarColorLight() {}
 
@@ -75,6 +80,53 @@ public final class QuasarColorLight {
         return vkBuffer;
     }
 
+    /**
+     * Camera section and render distance in sections (render thread, each frame). Pages of sections outside
+     * {@code radius + 1} are freed a few at a time: nothing else tells this table that a section unloaded.
+     */
+    public static void setCamera(int sx, int sy, int sz, int radius) {
+        camSx = sx; camSy = sy; camSz = sz; keepRadius = radius + 1;
+    }
+
+    private static int dist(int sx, int sy, int sz) {
+        return Math.max(Math.max(Math.abs(sx - camSx), Math.abs(sz - camSz)), Math.abs(sy - camSy) / 2);
+    }
+
+    private static void freePage(int page) {
+        int s = pageSlot[page];
+        if (s >= 0 && tablePage[s] == page + 1) {
+            tableKey[s] = 0;
+            tablePage[s] = 0;
+            long entry = mapped + HEADER_BYTES + 8L * s;
+            MemoryUtil.memPutInt(entry, 0);
+            MemoryUtil.memPutInt(entry + 4, 0);
+        }
+        pageSlot[page] = -1;
+        freePages.push(page);
+    }
+
+    /** Frees out-of-range pages, 128 checked per frame (the whole pool every 32 frames). */
+    private static void sweep() {
+        for (int n = 0; n < 128; n++) {
+            int page = sweep;
+            sweep = (sweep + 1) % PAGES;
+            if (pageSlot[page] >= 0 && dist(pageSx[page], pageSy[page], pageSz[page]) > keepRadius) freePage(page);
+        }
+    }
+
+    /** Pool full: free the page farthest from the camera if it is farther than the section asking. */
+    private static boolean evictFarther(int sx, int sy, int sz) {
+        int best = -1, bestD = dist(sx, sy, sz);
+        for (int page = 0; page < PAGES; page++) {
+            if (pageSlot[page] < 0) continue;
+            int d = dist(pageSx[page], pageSy[page], pageSz[page]);
+            if (d > bestD) { bestD = d; best = page; }
+        }
+        if (best < 0) return false;
+        freePage(best);
+        return true;
+    }
+
     private static int key(int sx, int sy, int sz) {
         return (sx & 0x3FF) | ((sy & 0x3FF) << 10) | ((sz & 0x3FF) << 20) | VALID;
     }
@@ -85,38 +137,34 @@ public final class QuasarColorLight {
 
     private static void flush() {
         Pending p;
+        sweep();
         int budget = 512; // sections per frame
+        boolean allNear = false; // one failed eviction scan per frame is enough
         while (budget-- > 0 && (p = queue.poll()) != null) {
             int s = slot(p.sx, p.sy, p.sz);
             int k = key(p.sx, p.sy, p.sz);
             long entry = mapped + HEADER_BYTES + 8L * s;
             if (p.cells == null) {
-                if (tableKey[s] == k && tablePage[s] != 0) {
-                    freePages.push(tablePage[s] - 1);
-                    tableKey[s] = 0;
-                    tablePage[s] = 0;
-                    MemoryUtil.memPutInt(entry, 0);
-                    MemoryUtil.memPutInt(entry + 4, 0);
-                }
+                if (tableKey[s] == k && tablePage[s] != 0) freePage(tablePage[s] - 1);
                 continue;
             }
             int page;
             if (tableKey[s] == k && tablePage[s] != 0) {
                 page = tablePage[s] - 1;
             } else {
-                if (tablePage[s] != 0) freePages.push(tablePage[s] - 1); // ring slot reused by another section
-                if (freePages.isEmpty()) { // pool full: this section stays white
-                    tableKey[s] = 0;
-                    tablePage[s] = 0;
-                    MemoryUtil.memPutInt(entry, 0);
+                if (tablePage[s] != 0) freePage(tablePage[s] - 1); // ring slot reused by another section
+                if (freePages.isEmpty() && (allNear || !evictFarther(p.sx, p.sy, p.sz))) { // all nearer: stays white
+                    allNear = true;
                     continue;
                 }
                 page = freePages.pop();
             }
             long dst = mapped + HEADER_BYTES + TABLE_BYTES + 4L * page * CELLS;
-            for (int i = 0; i < CELLS; i++) MemoryUtil.memPutInt(dst + 4L * i, p.cells[i]);
+            MemoryUtil.memIntBuffer(dst, CELLS).put(0, p.cells);
             tableKey[s] = k;
             tablePage[s] = page + 1;
+            pageSlot[page] = s;
+            pageSx[page] = p.sx; pageSy[page] = p.sy; pageSz[page] = p.sz;
             MemoryUtil.memPutInt(entry + 4, page + 1);
             MemoryUtil.memPutInt(entry, k);
         }
@@ -150,7 +198,7 @@ public final class QuasarColorLight {
                 mapped = allocInfo.pMappedData();
                 MemoryUtil.memSet(mapped, 0, HEADER_BYTES + TABLE_BYTES);
                 MemoryUtil.memPutInt(mapped, mode);
-                for (int i = PAGES - 1; i >= 0; i--) freePages.push(i);
+                for (int i = PAGES - 1; i >= 0; i--) { pageSlot[i] = -1; freePages.push(i); }
                 vkBuffer = pBuffer.get(0);
             }
         } catch (Throwable t) {
