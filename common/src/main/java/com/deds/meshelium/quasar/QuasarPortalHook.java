@@ -60,4 +60,15 @@ public final class QuasarPortalHook {
             int height) {
         return TerrainDrawer.quasarDrawPortalView(cam, color, depth, width, height);
     }
+
+    /** Water, glass and other translucent terrain for a portal view (after drawTerrain, same target). */
+    public static boolean drawTranslucent(CameraRenderState cam, GpuTextureView color, GpuTextureView depth,
+            int width, int height) {
+        return TerrainDrawer.quasarDrawPortalTranslucent(cam, color, depth, width, height);
+    }
+
+    /** Translucent sections drawn by the last portal translucent pass. */
+    public static int lastTranslucentSections() {
+        return TerrainDrawer.quasarLastPortalTranslucentSections();
+    }
 }

@@ -3502,6 +3502,146 @@ public final class TerrainDrawer {
         }
     }
 
+    /** Quasar MC: translucent sections drawn by the last portal translucent pass (F3). */
+    private static int quasarPortalTransSections;
+    private static long[] quasarTransKeys = new long[256];
+    private static float[] quasarTransOrigins = new float[768];
+    private static int[] quasarTransMeta = new int[768];
+
+    public static int quasarLastPortalTranslucentSections() {
+        return quasarPortalTransSections;
+    }
+
+    /**
+     * Quasar MC: water, glass and other translucent terrain for a portal view, into the portal's image
+     * after its opaque terrain. Same pipeline, descriptors and shader as {@link #drawTranslucentInner};
+     * the section list is every resident section with translucent quads inside the portal camera's
+     * frustum and the portal render distance, sorted back to front from the portal camera. The order
+     * of quads INSIDE a section is still vanilla's sort for the main camera (usually invisible for
+     * water; can show on stacked stained glass seen from an odd angle). No occlusion gate, no stats,
+     * no GPU timers - the main pass's counters are untouched.
+     */
+    public static boolean quasarDrawPortalTranslucent(CameraRenderState cam, GpuTextureView colorView,
+            GpuTextureView depthView, int width, int height) {
+        quasarPortalTransSections = 0;
+        if (broken || cam == null || cam.cullFrustum == null) {
+            return false;
+        }
+        TerrainResidency.DrawSnapshot snap = snapshot;
+        GpuTextureView atlasView = quasarAtlasView;
+        GpuSampler atlasSampler = quasarAtlasSampler;
+        GpuTextureView lightmapView = Minecraft.getInstance().gameRenderer.lightmap();
+        if (snap == null || snap.arenaBackingHandle() == 0L || snap.sectionCount() == 0 || atlasView == null
+                || atlasSampler == null || lightmapView == null || colorView == null || depthView == null) {
+            return false;
+        }
+        int radius = com.deds.meshelium.quasar.QuasarPortalHook.portalRenderDistance;
+        int r = radius <= 0 ? Integer.MAX_VALUE / 2 : radius;
+        int camSx = cam.blockPos.getX() >> 4;
+        int camSz = cam.blockPos.getZ() >> 4;
+        Frustum frustum = cam.cullFrustum;
+        double camX = cam.pos.x;
+        double camY = cam.pos.y;
+        double camZ = cam.pos.z;
+        int[] d = snap.data();
+        int cap = transQuadCapacity();
+        String multiWGProp = System.getProperty(PROPERTY_TRANSLUCENT_MULTI_WG);
+        boolean multiWG = multiWGProp == null || Boolean.parseBoolean(multiWGProp);
+
+        int n = 0;
+        int snapCount = snap.maxSlot() + 1;
+        for (int s = 0; s < snapCount; s++) {
+            int o = s * TerrainResidency.DrawSnapshot.STRIDE;
+            if (d[o + 4] <= 0 || d[o + 18] < 0) {
+                continue;
+            }
+            int sx = d[o];
+            int sz = d[o + 2];
+            if (Math.abs(sx - camSx) > r || Math.abs(sz - camSz) > r) {
+                continue;
+            }
+            double bx = sx << 4;
+            double by = d[o + 1] << 4;
+            double bz = sz << 4;
+            if (!frustum.isVisible(new AABB(bx, by, bz, bx + 16.0, by + 16.0, bz + 16.0))) {
+                continue;
+            }
+            float ddx = (float) (bx + 8.0 - camX);
+            float ddy = (float) (by + 8.0 - camY);
+            float ddz = (float) (bz + 8.0 - camZ);
+            if (n == quasarTransKeys.length) {
+                quasarTransKeys = Arrays.copyOf(quasarTransKeys, n * 2);
+            }
+            quasarTransKeys[n++] = ((long) Float.floatToIntBits(ddx * ddx + ddy * ddy + ddz * ddz) << 32) | s;
+        }
+        if (n == 0) {
+            return true;
+        }
+        Arrays.sort(quasarTransKeys, 0, n);
+        int drawCount = 0;
+        for (int i = n - 1; i >= 0; i--) { // far to near
+            int s = (int) quasarTransKeys[i];
+            int o = s * TerrainResidency.DrawSnapshot.STRIDE;
+            int count = d[o + 4];
+            int addr = d[o + 3];
+            float ox = (float) ((double) (d[o] << 4) - camX);
+            float oy = (float) ((double) (d[o + 1] << 4) - camY);
+            float oz = (float) ((double) (d[o + 2] << 4) - camZ);
+            int sliceStep = multiWG ? count : cap;
+            for (int first = 0; first < count; first += sliceStep) {
+                if ((drawCount + 1) * 3 > quasarTransMeta.length) {
+                    quasarTransOrigins = Arrays.copyOf(quasarTransOrigins, quasarTransOrigins.length * 2);
+                    quasarTransMeta = Arrays.copyOf(quasarTransMeta, quasarTransMeta.length * 2);
+                }
+                quasarTransOrigins[drawCount * 3] = ox;
+                quasarTransOrigins[drawCount * 3 + 1] = oy;
+                quasarTransOrigins[drawCount * 3 + 2] = oz;
+                quasarTransMeta[drawCount * 3] = addr + first;
+                quasarTransMeta[drawCount * 3 + 1] = Math.min(sliceStep, count - first);
+                quasarTransMeta[drawCount * 3 + 2] = NO_GATE;
+                drawCount++;
+            }
+        }
+        quasarPortalTransSections = n;
+
+        quasarPortalPass = true;
+        quasarPortalWidth = width;
+        quasarPortalHeight = height;
+        try {
+            CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
+            GpuBufferSlice sceneSlice = uploadScene(encoder, cam, atlasView.getWidth(0), atlasView.getHeight(0));
+            try (RenderPass pass = encoder.createRenderPass(() -> "quasar portal translucent",
+                    colorView, Optional.empty(), depthView, OptionalDouble.empty())) {
+                VulkanRenderPass backendPass = (VulkanRenderPass) ((RenderPassAccessor) pass).meshelium$backend();
+                VulkanRenderPassAccessor vkPass = (VulkanRenderPassAccessor) backendPass;
+                VkCommandBuffer cb = vkPass.meshelium$commandBuffer();
+                TerrainDrawPipeline p = translucentPipelineFor(vkPass, colorView, depthView);
+                VK10.vkCmdBindPipeline(cb, VK10.VK_PIPELINE_BIND_POINT_GRAPHICS, p.pipeline());
+                pushTranslucentDescriptors(cb, p, snap.arenaBlockHandles(), sceneSlice,
+                        atlasView, atlasSampler, lightmapView, snap.sectionRecordsHandle(), 0L);
+                try (MemoryStack stack = MemoryStack.stackPush()) {
+                    ByteBuffer push = stack.calloc(TerrainDrawPipeline.PUSH_BYTES);
+                    for (int k = 0; k < drawCount; k++) {
+                        push.putFloat(0, quasarTransOrigins[k * 3]);
+                        push.putFloat(4, quasarTransOrigins[k * 3 + 1]);
+                        push.putFloat(8, quasarTransOrigins[k * 3 + 2]);
+                        push.putInt(12, quasarTransMeta[k * 3]);
+                        push.putInt(16, quasarTransMeta[k * 3 + 1]);
+                        push.putInt(20, quasarTransMeta[k * 3 + 2]);
+                        push.putInt(24, occGateStamp32);
+                        VK10.vkCmdPushConstants(cb, p.pipelineLayout(),
+                                EXTMeshShader.VK_SHADER_STAGE_MESH_BIT_EXT, 0, push);
+                        int groups = (quasarTransMeta[k * 3 + 1] + cap - 1) / cap;
+                        EXTMeshShader.vkCmdDrawMeshTasksEXT(cb, groups, 1, 1);
+                    }
+                }
+            }
+            return true;
+        } finally {
+            quasarPortalPass = false;
+        }
+    }
+
     private static int pushRun(int runCount, float ox, float oy, float oz, int firstQuad, int quads) {
         if ((runCount + 1) * 3 > runOrigins.length) {
             runOrigins = Arrays.copyOf(runOrigins, runOrigins.length * 2);
