@@ -55,6 +55,9 @@ abstract class ClientLevelUnloadMixin {
         if (!ExtractDispatch.armed() || meshelium$unloadHookBroken) {
             return;
         }
+        if (com.deds.meshelium.quasar.QuasarPortalHook.isForeignLevel(this)) {
+            return; // Quasar MC: a portal background world, not the player's
+        }
         try {
             ExtractDispatch.onChunkDropping(chunk);
         } catch (Throwable t) {

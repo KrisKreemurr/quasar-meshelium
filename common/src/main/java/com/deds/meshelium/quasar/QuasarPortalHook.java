@@ -24,6 +24,55 @@ public final class QuasarPortalHook {
     public static volatile int portalRenderDistance = Integer.MAX_VALUE;
     
     private static boolean failed;
+
+    /**
+     * Threads that compile sections of another client world (Quasar Immersive Portals' background-world
+     * terrain). Meshelium's compile tap ignores them: its residency holds the player's world only.
+     */
+    private static final ThreadLocal<Boolean> FOREIGN_COMPILE = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    /** Marks the calling thread as compiling another world's sections (called once by each such worker). */
+    public static void markForeignCompileThread() {
+        FOREIGN_COMPILE.set(Boolean.TRUE);
+    }
+
+    public static boolean isForeignCompile() {
+        return FOREIGN_COMPILE.get();
+    }
+
+    /**
+     * Background client worlds held by the portal mod (other dimensions seen through portals). Their chunk,
+     * light and block events must not reach Meshelium's world-bound bookkeeping (far field). A registered world
+     * the player is in counts as the player's world (never foreign).
+     */
+    private static final java.util.Set<Object> FOREIGN_LEVELS =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    public static void registerForeignLevel(Object level) {
+        if (level != null) FOREIGN_LEVELS.add(level);
+    }
+
+    public static void unregisterForeignLevel(Object level) {
+        if (level != null) FOREIGN_LEVELS.remove(level);
+    }
+
+    /** True when {@code level} is a portal background world the player is not in. */
+    public static boolean isForeignLevel(Object level) {
+        if (level == null || FOREIGN_LEVELS.isEmpty() || !FOREIGN_LEVELS.contains(level)) return false;
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        return mc.player == null || mc.player.level() != level;
+    }
+
+    /** True when {@code chunkSource} belongs to a foreign level (see {@link #isForeignLevel}). */
+    public static boolean isForeignChunkSource(Object chunkSource) {
+        if (chunkSource == null || FOREIGN_LEVELS.isEmpty()) return false;
+        for (Object l : FOREIGN_LEVELS) {
+            if (l instanceof net.minecraft.client.multiplayer.ClientLevel cl && cl.getChunkSource() == chunkSource) {
+                return isForeignLevel(cl);
+            }
+        }
+        return false;
+    }
     
     private QuasarPortalHook() {}
     

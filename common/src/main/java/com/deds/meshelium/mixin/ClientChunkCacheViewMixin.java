@@ -81,6 +81,9 @@ abstract class ClientChunkCacheViewMixin {
         if (!ExtractDispatch.armed() || meshelium$viewRadiusHookBroken) {
             return;
         }
+        if (com.deds.meshelium.quasar.QuasarPortalHook.isForeignChunkSource(this)) {
+            return; // Quasar MC: a portal background world, not the player's
+        }
         try {
             ExtractDispatch.onViewRadiusShrink(newRadius);
         } catch (Throwable t) {
@@ -100,6 +103,9 @@ abstract class ClientChunkCacheViewMixin {
     private void meshelium$beforeUpdateViewCenter(int newCenterX, int newCenterZ, CallbackInfo ci) {
         if (!ExtractDispatch.armed() || meshelium$viewCenterHookBroken) {
             return;
+        }
+        if (com.deds.meshelium.quasar.QuasarPortalHook.isForeignChunkSource(this)) {
+            return; // Quasar MC: a portal background world, not the player's
         }
         try {
             ExtractDispatch.onViewCenterMove(newCenterX, newCenterZ);

@@ -86,6 +86,9 @@ abstract class ClientPacketListenerChunkReceiveMixin {
         if (!ExtractDispatch.armed() || meshelium$receiveHookBroken) {
             return;
         }
+        if (com.deds.meshelium.quasar.QuasarPortalHook.isForeignLevel(chunk.getLevel())) {
+            return; // Quasar MC: a portal background world, not the player's
+        }
         try {
             ExtractDispatch.onChunkReceived(chunk);
         } catch (Throwable t) {

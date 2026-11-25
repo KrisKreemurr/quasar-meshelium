@@ -117,7 +117,11 @@ abstract class SectionCompilerMixin {
         // edge issues an allChanged(), which is what re-encodes the world
         // when this comes back.
         if (meshelium$tapBroken || MesheliumGate.state() != MesheliumGate.State.VULKAN_MESH_SHADERS
-                || !MesheliumConfig.terrainRenderingConfigured()) {
+                || !MesheliumConfig.terrainRenderingConfigured()
+                || com.deds.meshelium.quasar.QuasarPortalHook.isForeignCompile()) {
+            // Quasar MC: sections of another world (portal views into other dimensions) must not
+            // reach the residency, which holds the player's world only (even an empty compile
+            // would clear a retained section at the same coordinates).
             return;
         }
         try {

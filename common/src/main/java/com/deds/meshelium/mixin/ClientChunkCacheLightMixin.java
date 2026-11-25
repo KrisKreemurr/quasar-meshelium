@@ -110,6 +110,9 @@ abstract class ClientChunkCacheLightMixin {
         if (!ExtractDispatch.armed() || meshelium$lightHookBroken) {
             return;
         }
+        if (com.deds.meshelium.quasar.QuasarPortalHook.isForeignChunkSource(this)) {
+            return; // Quasar MC: a portal background world, not the player's
+        }
         try {
             // SectionPos.x()/z() ARE the chunk coordinates (vanilla's own
             // onLightUpdate feeds them straight to

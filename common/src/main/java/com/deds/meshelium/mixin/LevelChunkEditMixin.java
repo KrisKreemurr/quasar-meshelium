@@ -87,6 +87,9 @@ abstract class LevelChunkEditMixin {
             return;
         }
         LevelChunk self = (LevelChunk) (Object) this;
+        if (com.deds.meshelium.quasar.QuasarPortalHook.isForeignLevel(self.getLevel())) {
+            return; // Quasar MC: a portal background world, not the player's
+        }
         try {
             if (!self.getLevel().isClientSide()) {
                 return; // the integrated server's copy: not our event
@@ -125,6 +128,9 @@ abstract class LevelChunkEditMixin {
             return;
         }
         LevelChunk self = (LevelChunk) (Object) this;
+        if (com.deds.meshelium.quasar.QuasarPortalHook.isForeignLevel(self.getLevel())) {
+            return; // Quasar MC: a portal background world, not the player's
+        }
         try {
             if (!self.getLevel().isClientSide()) {
                 return;

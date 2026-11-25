@@ -38,3 +38,10 @@ Planned: block-light color in the terrain shader.
   entries go through a small host staging buffer (FREE_FRAME_LAG + 1 slots) and are copied once per frame from
   `MesheliumTerrainGpu.endFrame`. The header carries a magic value so the dummy bound before the first upload
   never tints.
+
+- 2026-11-25: portal views into other dimensions. `QuasarPortalHook` gains a foreign-compile thread mark
+  (`markForeignCompileThread`) and a foreign-level registry (`registerForeignLevel`/`unregisterForeignLevel`).
+  The section-compile tap skips foreign compile threads (Quasar Immersive Portals meshes a background world's
+  sections with vanilla's compiler; even an empty compile would otherwise clear a retained section at the same
+  coordinates), and the far-field chunk/light/block/unload/view hooks skip chunk events of registered background
+  worlds the player is not in.
