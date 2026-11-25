@@ -45,3 +45,6 @@ Planned: block-light color in the terrain shader.
   sections with vanilla's compiler; even an empty compile would otherwise clear a retained section at the same
   coordinates), and the far-field chunk/light/block/unload/view hooks skip chunk events of registered background
   worlds the player is not in.
+- 2026-11-25: the compile tap's foreign check also compares the build's block copy (`RenderSectionRegion.level`)
+  with the main LevelRenderer's level (`QuasarPortalHook.isForeignRegion`), so another world's sections are skipped
+  whatever thread or route they come from; the first catch is logged with the thread name.

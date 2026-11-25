@@ -83,7 +83,7 @@ abstract class SectionCompilerMixin {
     private void meshelium$afterCompile(SectionPos sectionPos, RenderSectionRegion region,
             VertexSorting vertexSorting, SectionBufferBuilderPack pack,
             CallbackInfoReturnable<SectionCompiler.Results> cir) {
-        meshelium$tap(sectionPos, cir.getReturnValue());
+        meshelium$tap(sectionPos, region, cir.getReturnValue());
     }
 
     /**
@@ -106,11 +106,11 @@ abstract class SectionCompilerMixin {
             RenderSectionRegion region, VertexSorting vertexSorting,
             SectionBufferBuilderPack pack, java.util.List<?> additionalRenderers,
             CallbackInfoReturnable<SectionCompiler.Results> cir) {
-        meshelium$tap(sectionPos, cir.getReturnValue());
+        meshelium$tap(sectionPos, region, cir.getReturnValue());
     }
 
     @Unique
-    private static void meshelium$tap(SectionPos sectionPos, SectionCompiler.Results results) {
+    private static void meshelium$tap(SectionPos sectionPos, RenderSectionRegion region, SectionCompiler.Results results) {
         // terrainRenderingEnabled() is checked here, not just at the draw:
         // encoding into an arena nobody draws is what made the doubled VRAM
         // a steady state rather than a swap transient. Every master-switch
@@ -118,7 +118,7 @@ abstract class SectionCompilerMixin {
         // when this comes back.
         if (meshelium$tapBroken || MesheliumGate.state() != MesheliumGate.State.VULKAN_MESH_SHADERS
                 || !MesheliumConfig.terrainRenderingConfigured()
-                || com.deds.meshelium.quasar.QuasarPortalHook.isForeignCompile()) {
+                || com.deds.meshelium.quasar.QuasarPortalHook.isForeignRegion(region)) {
             // Quasar MC: sections of another world (portal views into other dimensions) must not
             // reach the residency, which holds the player's world only (even an empty compile
             // would clear a retained section at the same coordinates).

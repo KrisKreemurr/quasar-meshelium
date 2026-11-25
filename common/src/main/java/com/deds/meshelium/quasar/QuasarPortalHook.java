@@ -40,6 +40,50 @@ public final class QuasarPortalHook {
         return FOREIGN_COMPILE.get();
     }
 
+    private static java.lang.reflect.Field regionLevelField, rendererLevelField;
+    private static boolean regionLookupFailed;
+    private static final java.util.concurrent.atomic.AtomicBoolean FOREIGN_LOGGED = new java.util.concurrent.atomic.AtomicBoolean();
+
+    /**
+     * True when a section build's block copy ({@code RenderSectionRegion}) did not come from the world the main
+     * renderer shows: a portal background world, or any other route by which another world's blocks reach a
+     * compile. Works on any thread, independent of {@link #markForeignCompileThread}. Logs the first catch.
+     */
+    public static boolean isForeignRegion(Object region) {
+        if (isForeignCompile()) return true;
+        if (region == null || regionLookupFailed) return false;
+        try {
+            if (regionLevelField == null) {
+                regionLevelField = region.getClass().getDeclaredField("level");
+                regionLevelField.setAccessible(true);
+                for (java.lang.reflect.Field f : net.minecraft.client.renderer.LevelRenderer.class.getDeclaredFields()) {
+                    if (f.getType() == net.minecraft.client.multiplayer.ClientLevel.class
+                            && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                        f.setAccessible(true);
+                        rendererLevelField = f;
+                        break;
+                    }
+                }
+                if (rendererLevelField == null) throw new NoSuchFieldException("LevelRenderer ClientLevel field");
+            }
+            Object regionLevel = regionLevelField.get(region);
+            Object rendererLevel = rendererLevelField.get(net.minecraft.client.Minecraft.getInstance().levelRenderer);
+            boolean foreign = regionLevel != null && rendererLevel != null && regionLevel != rendererLevel;
+            if (foreign && FOREIGN_LOGGED.compareAndSet(false, true)) {
+                com.deds.meshelium.MesheliumLog.LOGGER.warn(
+                    "[Quasar] skipped a section build from another world (thread '{}', foreign mark {}): {} vs {}",
+                    Thread.currentThread().getName(), isForeignCompile(),
+                    ((net.minecraft.client.multiplayer.ClientLevel) regionLevel).dimension().identifier(),
+                    ((net.minecraft.client.multiplayer.ClientLevel) rendererLevel).dimension().identifier());
+            }
+            return foreign;
+        } catch (Throwable t) {
+            regionLookupFailed = true;
+            com.deds.meshelium.MesheliumLog.LOGGER.error("[Quasar] foreign-region check unavailable", t);
+            return false;
+        }
+    }
+
     /**
      * Background client worlds held by the portal mod (other dimensions seen through portals). Their chunk,
      * light and block events must not reach Meshelium's world-bound bookkeeping (far field). A registered world
