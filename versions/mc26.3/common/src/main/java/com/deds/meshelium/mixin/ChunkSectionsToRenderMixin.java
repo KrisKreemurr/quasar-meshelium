@@ -89,6 +89,17 @@ abstract class ChunkSectionsToRenderMixin {
     private void meshelium$afterOpaqueTerrain(ChunkSectionLayerGroup group, RenderPass pass,
             GpuSampler sampler, GpuTextureView atlasView, boolean wireframe, CallbackInfo ci) {
         TerrainKillSwitch.afterRenderGroup(group);
+        // Quasar MC: vanilla drew the opaque group (Meshelium had nothing to draw yet - the first frames in a world
+        // entered through a portal). Portal views and the crossing stand-in still need their after-opaque point, or
+        // the frame shows an empty world for a moment. Same suspension as the HEAD path: no pass may be open.
+        if (group == ChunkSectionLayerGroup.OPAQUE && !wireframe && TerrainKillSwitch.armed()
+                && com.deds.meshelium.quasar.QuasarPortalHook.afterOpaque != null) {
+            try (MainPassSuspension suspended = MainPassSuspension.suspend(pass)) {
+                if (suspended != null) {
+                    com.deds.meshelium.quasar.QuasarPortalHook.fireAfterOpaque();
+                }
+            }
+        }
     }
 
     @Inject(

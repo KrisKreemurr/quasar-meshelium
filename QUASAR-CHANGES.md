@@ -55,3 +55,6 @@ Planned: block-light color in the terrain shader.
   compares the block copy's world with the player's own world (`player.level()`), which Immersive
   Portals does not swap while handling another world's packets. The region's world field is found by
   name or, failing that, by type.
+- 2026-11-26: `QuasarPortalHook.fireAfterOpaque` also fires at the TAIL of the opaque `renderGroup` when vanilla drew
+  it (26.3, with `MainPassSuspension` like the HEAD path). Right after a portal crossing Meshelium has nothing
+  resident and hands the frame to vanilla, so portal views and the crossing stand-in were skipped: a flash.
