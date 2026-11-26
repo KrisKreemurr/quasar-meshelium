@@ -48,3 +48,10 @@ Planned: block-light color in the terrain shader.
 - 2026-11-25: the compile tap's foreign check also compares the build's block copy (`RenderSectionRegion.level`)
   with the main LevelRenderer's level (`QuasarPortalHook.isForeignRegion`), so another world's sections are skipped
   whatever thread or route they come from; the first catch is logged with the thread name.
+
+- 2026-11-25: fixed the region-level foreign-world check (`QuasarPortalHook.isForeignRegion`). On 26.3
+  `LevelRenderer` has no `ClientLevel` field, so the lookup threw on first use and the check switched
+  itself off (black/Nether-coloured Overworld chunks near cross-dimension portals kept happening). It now
+  compares the block copy's world with the player's own world (`player.level()`), which Immersive
+  Portals does not swap while handling another world's packets. The region's world field is found by
+  name or, failing that, by type.

@@ -40,46 +40,63 @@ public final class QuasarPortalHook {
         return FOREIGN_COMPILE.get();
     }
 
-    private static java.lang.reflect.Field regionLevelField, rendererLevelField;
-    private static boolean regionLookupFailed;
+    private static volatile java.lang.reflect.Field regionLevelField;
+    private static volatile boolean regionLookupFailed;
     private static final java.util.concurrent.atomic.AtomicBoolean FOREIGN_LOGGED = new java.util.concurrent.atomic.AtomicBoolean();
 
+    /** The block copy's world field: "level" by name, else the first non-static field holding a Level. */
+    private static java.lang.reflect.Field findRegionLevelField(Class<?> regionClass) throws NoSuchFieldException {
+        for (Class<?> c = regionClass; c != null && c != Object.class; c = c.getSuperclass()) {
+            try {
+                java.lang.reflect.Field f = c.getDeclaredField("level");
+                f.setAccessible(true);
+                return f;
+            } catch (NoSuchFieldException ignored) {
+            }
+            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())
+                        && net.minecraft.world.level.Level.class.isAssignableFrom(f.getType())) {
+                    f.setAccessible(true);
+                    return f;
+                }
+            }
+        }
+        throw new NoSuchFieldException(regionClass.getName() + " has no world field");
+    }
+
     /**
-     * True when a section build's block copy ({@code RenderSectionRegion}) did not come from the world the main
-     * renderer shows: a portal background world, or any other route by which another world's blocks reach a
-     * compile. Works on any thread, independent of {@link #markForeignCompileThread}. Logs the first catch.
+     * True when a section build's block copy ({@code RenderSectionRegion}) is not from the world the player is in:
+     * a portal background world, or any other route by which another world's blocks reach a compile (Immersive
+     * Portals swaps the client's world and renderer while it handles another world's packets, so those are not a
+     * safe reference; the player's own world is). Works on any thread. Logs the first catch.
      */
     public static boolean isForeignRegion(Object region) {
         if (isForeignCompile()) return true;
         if (region == null || regionLookupFailed) return false;
         try {
-            if (regionLevelField == null) {
-                regionLevelField = region.getClass().getDeclaredField("level");
-                regionLevelField.setAccessible(true);
-                for (java.lang.reflect.Field f : net.minecraft.client.renderer.LevelRenderer.class.getDeclaredFields()) {
-                    if (f.getType() == net.minecraft.client.multiplayer.ClientLevel.class
-                            && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
-                        f.setAccessible(true);
-                        rendererLevelField = f;
-                        break;
-                    }
-                }
-                if (rendererLevelField == null) throw new NoSuchFieldException("LevelRenderer ClientLevel field");
+            java.lang.reflect.Field field = regionLevelField;
+            if (field == null) {
+                field = findRegionLevelField(region.getClass());
+                regionLevelField = field;
             }
-            Object regionLevel = regionLevelField.get(region);
-            Object rendererLevel = rendererLevelField.get(net.minecraft.client.Minecraft.getInstance().levelRenderer);
-            boolean foreign = regionLevel != null && rendererLevel != null && regionLevel != rendererLevel;
+            Object regionLevel = field.get(region);
+            net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+            if (regionLevel == null || player == null) return false;
+            Object playerLevel = player.level();
+            boolean foreign = playerLevel != null && regionLevel != playerLevel;
             if (foreign && FOREIGN_LOGGED.compareAndSet(false, true)) {
                 com.deds.meshelium.MesheliumLog.LOGGER.warn(
                     "[Quasar] skipped a section build from another world (thread '{}', foreign mark {}): {} vs {}",
                     Thread.currentThread().getName(), isForeignCompile(),
-                    ((net.minecraft.client.multiplayer.ClientLevel) regionLevel).dimension().identifier(),
-                    ((net.minecraft.client.multiplayer.ClientLevel) rendererLevel).dimension().identifier());
+                    ((net.minecraft.world.level.Level) regionLevel).dimension().identifier(),
+                    ((net.minecraft.world.level.Level) playerLevel).dimension().identifier());
             }
             return foreign;
         } catch (Throwable t) {
-            regionLookupFailed = true;
-            com.deds.meshelium.MesheliumLog.LOGGER.error("[Quasar] foreign-region check unavailable", t);
+            if (!regionLookupFailed) {
+                regionLookupFailed = true;
+                com.deds.meshelium.MesheliumLog.LOGGER.error("[Quasar] foreign-region check unavailable", t);
+            }
             return false;
         }
     }
